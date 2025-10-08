@@ -1,0 +1,7 @@
+[workspace]
+members = [
+	"dlmgr-cli",
+	"dlmgr",
+]
+resolver = "2"
+

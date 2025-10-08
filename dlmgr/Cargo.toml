@@ -1,0 +1,16 @@
+[package]
+name = "dlmgr"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+async-channel = "2.5.0"
+async-trait = "0.1.89"
+hex = "0.4.3"
+reqwest = { version = "0.12.23" }
+sha2 = "0.10.9"
+thiserror = "2.0.17"
+tokio = { version = "1.47.1", features = ["net"] }
+tracing = "0.1.41"
+url = "2.5.7"
