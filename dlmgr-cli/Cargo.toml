@@ -2,6 +2,8 @@
 name = "dlmgr-cli"
 version = "0.1.0"
 edition = "2024"
+description = "CLI tool for working with and testing the downlaod manager in the dlmgr crate"
+license = "MPL-2.0"
 
 [dependencies]
 dlmgr = { path = "../dlmgr" }
