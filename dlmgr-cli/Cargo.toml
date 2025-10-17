@@ -6,7 +6,7 @@ description = "CLI tool for working with and testing the downlaod manager in the
 license = "MPL-2.0"
 
 [dependencies]
-dlmgr = { path = "../dlmgr" }
+dlmgr = { version = "0.1.0", path = "../dlmgr" }
 
 anyhow = "1.0.100"
 clap = { version = "4.5.48", features = ["derive"] }
