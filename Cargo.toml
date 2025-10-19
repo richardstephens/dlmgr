@@ -2,6 +2,7 @@
 members = [
 	"dlmgr-cli",
 	"dlmgr",
+	"range-server",
 ]
 resolver = "2"
 
