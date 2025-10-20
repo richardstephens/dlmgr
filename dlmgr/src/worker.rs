@@ -117,9 +117,14 @@ async fn request_chunk(
         match resp.chunk().await {
             Ok(Some(chunk)) => {
                 let chunk_len = chunk.len() as u64;
-                ctx.tx
-                    .send((request_offset + bytes_sent, chunk.into()))
-                    .map_err(|_| RequestChunkError::SubmitChunkError)?;
+
+                // it turns out that, for HTTP2, reqwest will send us a 0-length chunk at the end.
+                // No need to forward this onwards.
+                if chunk_len > 0 {
+                    ctx.tx
+                        .send((request_offset + bytes_sent, chunk.into()))
+                        .map_err(|_| RequestChunkError::SubmitChunkError)?;
+                }
 
                 bytes_sent += chunk_len;
             }

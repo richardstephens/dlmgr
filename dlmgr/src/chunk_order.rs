@@ -33,9 +33,17 @@ pub async fn reorder_chunks(
                     }
                     next_offset += len;
                 }
-            } else {
+            } else if offset > next_offset {
                 // todo: keep track of hashmap size
-                pending_chunks.insert(offset, chunk);
+                // todo: once we are tracking hashmap size and re-requesting backlogged data,
+                // we may need to handle overlapping chunks.
+                if pending_chunks.insert(offset, chunk).is_some() {
+                    bail!("received duplicate chunk at offset {offset}");
+                }
+            } else {
+                bail!(
+                    "Received chunk with offset={offset} when we've already moved on. next_offset={next_offset}"
+                );
             }
         } else {
             break;
