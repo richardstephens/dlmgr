@@ -6,6 +6,7 @@ pub(crate) mod response_helpers;
 mod spawner;
 mod task;
 mod task_builder;
+mod task_provider;
 pub(crate) mod urlset;
 mod worker;
 

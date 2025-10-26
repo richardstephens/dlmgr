@@ -1,13 +1,13 @@
 use crate::urlset::UrlSet;
 use anyhow::bail;
-use async_channel::{Receiver, RecvError};
 
+use crate::task_provider::TaskProvider;
 use reqwest::header::RANGE;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::Instant;
-use tracing::{trace, warn};
+use tracing::{debug, trace, warn};
 use url::Url;
 
 #[derive(Error, Debug)]
@@ -20,7 +20,7 @@ pub enum RequestChunkError {
 
 pub(crate) struct WorkerContext {
     pub(crate) worker_num: u8,
-    pub(crate) rx: Receiver<DlWorkerTask>,
+    pub(crate) task_provider: TaskProvider,
     pub(crate) url_set: UrlSet,
     pub(crate) client: reqwest::Client,
     pub(crate) tx: ChunkSender,
@@ -35,14 +35,14 @@ pub(crate) struct DlWorkerTask {
 type ChunkSender = UnboundedSender<(u64, Vec<u8>)>;
 
 pub async fn download_worker(ctx: WorkerContext) -> anyhow::Result<()> {
-    trace!("Beginning worker task {}", ctx.worker_num);
+    debug!("Beginning worker task {}", ctx.worker_num);
     loop {
-        match ctx.rx.recv().await {
-            Ok(wtask) => {
+        match ctx.task_provider.next_task() {
+            Some(wtask) => {
                 retry_request_chunk(&ctx, &wtask).await?;
             }
-            Err(RecvError) => {
-                trace!("Worker {} exiting", ctx.worker_num);
+            None => {
+                debug!("Worker {} exiting", ctx.worker_num);
                 return Ok(());
             }
         }

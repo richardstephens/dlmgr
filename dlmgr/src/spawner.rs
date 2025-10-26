@@ -4,11 +4,9 @@ use crate::error::{DlMgrCompletionError, DlMgrSetupError};
 use crate::response_helpers::{assert_supports_range_requests, extract_content_length};
 use crate::task::DownloadTask;
 use crate::task_builder::DownloadProps;
+use crate::task_provider::TaskProvider;
 use crate::urlset::UrlSet;
-use crate::worker::{DlWorkerTask, WorkerContext, download_worker};
-use async_channel::Sender;
-use std::cmp::min;
-
+use crate::worker::{WorkerContext, download_worker};
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 use tracing::{debug, error};
@@ -79,7 +77,7 @@ async fn exec_download(
     mut props: TaskProps,
     chunk_consumer: Box<dyn SequentialChunkConsumer>,
 ) -> Result<(), DlMgrCompletionError> {
-    let (s, r) = async_channel::bounded(props.dl_props.task_count as usize * 3);
+    let task_provider = TaskProvider::new_provider(props.dl_props.chunk_size, props.content_length);
 
     let (chunk_tx, chunk_rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -95,7 +93,7 @@ async fn exec_download(
             .map_err(|e| DlMgrCompletionError::ReqwestClientBuildError(e))?;
         join_set.spawn(download_worker(WorkerContext {
             worker_num: ii,
-            rx: r.clone(),
+            task_provider: task_provider.clone(),
             url_set: url_set.clone(),
             client,
             tx: chunk_tx.clone(),
@@ -105,21 +103,6 @@ async fn exec_download(
     // This drop is load-bearing - the `reorder_chunks` fn relies on the channels closing
     // to be able to know that there are no more messages to process.
     drop(chunk_tx);
-
-    // create worker task structs that represent pending work
-    let mut worker_tasks = vec![];
-    let mut offset: u64 = 0;
-    while offset < props.content_length {
-        let remaining_bytes = props.content_length - offset;
-        let len = min(remaining_bytes, props.dl_props.chunk_size as u64);
-
-        worker_tasks.push(DlWorkerTask { offset, len });
-
-        offset += len;
-    }
-
-    //send them off
-    tokio::task::spawn(issue_dl_tasks(s, worker_tasks));
 
     join_set.spawn(reorder_chunks(chunk_rx, chunk_consumer));
 
@@ -132,15 +115,5 @@ async fn exec_download(
         }
     }
 
-    Ok(())
-}
-
-async fn issue_dl_tasks(
-    s: Sender<DlWorkerTask>,
-    worker_tasks: Vec<DlWorkerTask>,
-) -> anyhow::Result<()> {
-    for wtask in worker_tasks {
-        s.send(wtask).await?;
-    }
     Ok(())
 }
