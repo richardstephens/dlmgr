@@ -7,12 +7,15 @@ use crate::task_builder::DownloadProps;
 use crate::task_provider::TaskProvider;
 use crate::urlset::UrlSet;
 use crate::worker::{WorkerContext, download_worker};
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 use tracing::{debug, error};
 
 struct TaskProps {
     content_length: u64,
+    bytes_downloaded: Arc<AtomicU64>,
     initial_client: Option<reqwest::Client>,
     dl_props: DownloadProps,
 }
@@ -53,13 +56,16 @@ pub async fn spawn_download_task(
 
     let (chtx, chrx) = oneshot::channel();
 
+    let bytes_downloaded = Arc::new(AtomicU64::new(0));
     let download_task = DownloadTask {
         content_length,
+        bytes_downloaded: bytes_downloaded.clone(),
         completion_handle: chrx,
     };
 
     let task_props = TaskProps {
         content_length,
+        bytes_downloaded,
         initial_client: Some(client),
         dl_props: props,
     };
@@ -104,7 +110,11 @@ async fn exec_download(
     // to be able to know that there are no more messages to process.
     drop(chunk_tx);
 
-    join_set.spawn(reorder_chunks(chunk_rx, chunk_consumer));
+    join_set.spawn(reorder_chunks(
+        chunk_rx,
+        chunk_consumer,
+        props.bytes_downloaded.clone(),
+    ));
 
     // all of the tasks in the set should complete and return Ok(()). if any of them fail to do so,
     // we should bail, effectively cancelling the download.

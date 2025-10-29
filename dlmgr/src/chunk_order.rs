@@ -1,18 +1,22 @@
 use crate::api::sequential_chunk_consumer::SequentialChunkConsumer;
 use anyhow::bail;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc;
 use tracing::error;
 
 pub async fn reorder_chunks(
     mut chunk_rx: mpsc::UnboundedReceiver<(u64, Vec<u8>)>,
     mut output: Box<dyn SequentialChunkConsumer>,
+    bytes_downloaded: Arc<AtomicU64>,
 ) -> anyhow::Result<()> {
     let mut next_offset = 0;
     let mut pending_chunks: HashMap<u64, Vec<u8>> = HashMap::new();
     let mut err = None;
     loop {
         if let Some((offset, chunk)) = chunk_rx.recv().await {
+            bytes_downloaded.fetch_add(chunk.len() as u64, Ordering::SeqCst);
             if offset == next_offset {
                 // we could avoid duplicating this segment by un-conditionally inserting
                 // the chunk into the hashmap. need to experiment with this a bit more.
