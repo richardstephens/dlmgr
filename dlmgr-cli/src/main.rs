@@ -1,5 +1,6 @@
 use clap::Parser;
 use dlmgr::consumers::in_memory_hashing::HashingChunkConsumer;
+use indicatif::ProgressBar;
 
 use dlmgr::DownloadTaskBuilder;
 use tracing::Level;
@@ -41,6 +42,20 @@ pub async fn main() -> anyhow::Result<()> {
     let download = task_builder
         .begin_download(urls.into_iter().collect(), HashingChunkConsumer::new())
         .await?;
+
+    if !args.verbose {
+        let progress = download.progress_provider();
+        let bar = ProgressBar::new(progress.content_length());
+        loop {
+            let bytes_downloaded = progress.bytes_downloaded();
+
+            bar.set_position(bytes_downloaded);
+            if bytes_downloaded >= progress.content_length() {
+                break;
+            }
+        }
+        bar.finish();
+    }
 
     download.await_completion().await?;
 
