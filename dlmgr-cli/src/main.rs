@@ -3,7 +3,7 @@ use dlmgr::consumers::in_memory_hashing::HashingChunkConsumer;
 use indicatif::ProgressBar;
 
 use dlmgr::DownloadTaskBuilder;
-use tracing::Level;
+use tracing::{Level, info};
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -43,8 +43,9 @@ pub async fn main() -> anyhow::Result<()> {
         .begin_download(urls.into_iter().collect(), HashingChunkConsumer::new())
         .await?;
 
+    let progress = download.progress_provider();
+
     if !args.verbose {
-        let progress = download.progress_provider();
         let bar = ProgressBar::new(progress.content_length());
         loop {
             let bytes_downloaded = progress.bytes_downloaded();
@@ -56,6 +57,8 @@ pub async fn main() -> anyhow::Result<()> {
         }
         bar.finish();
     }
+
+    info!("Stats: {:#?}", progress);
 
     download.await_completion().await?;
 

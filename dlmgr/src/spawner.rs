@@ -2,20 +2,19 @@ use crate::api::sequential_chunk_consumer::SequentialChunkConsumer;
 use crate::chunk_order::reorder_chunks;
 use crate::error::{DlMgrCompletionError, DlMgrSetupError};
 use crate::response_helpers::{assert_supports_range_requests, extract_content_length};
-use crate::task::DownloadTask;
+use crate::task::{DownloadTask, TaskStats};
 use crate::task_builder::DownloadProps;
 use crate::task_provider::TaskProvider;
 use crate::urlset::UrlSet;
 use crate::worker::{WorkerContext, download_worker};
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 use tracing::{debug, error};
 
 struct TaskProps {
     content_length: u64,
-    bytes_downloaded: Arc<AtomicU64>,
+    task_stats: Arc<TaskStats>,
     initial_client: Option<reqwest::Client>,
     dl_props: DownloadProps,
 }
@@ -56,16 +55,16 @@ pub async fn spawn_download_task(
 
     let (chtx, chrx) = oneshot::channel();
 
-    let bytes_downloaded = Arc::new(AtomicU64::new(0));
+    let task_stats = Arc::new(TaskStats::default());
     let download_task = DownloadTask {
         content_length,
-        bytes_downloaded: bytes_downloaded.clone(),
+        task_stats: task_stats.clone(),
         completion_handle: chrx,
     };
 
     let task_props = TaskProps {
         content_length,
-        bytes_downloaded,
+        task_stats,
         initial_client: Some(client),
         dl_props: props,
     };
@@ -83,7 +82,11 @@ async fn exec_download(
     mut props: TaskProps,
     chunk_consumer: Box<dyn SequentialChunkConsumer>,
 ) -> Result<(), DlMgrCompletionError> {
-    let task_provider = TaskProvider::new_provider(props.dl_props.chunk_size, props.content_length);
+    let task_provider = TaskProvider::new_provider(
+        &props.dl_props,
+        props.task_stats.clone(),
+        props.content_length,
+    );
 
     let (chunk_tx, chunk_rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -113,7 +116,7 @@ async fn exec_download(
     join_set.spawn(reorder_chunks(
         chunk_rx,
         chunk_consumer,
-        props.bytes_downloaded.clone(),
+        props.task_stats.clone(),
     ));
 
     // all of the tasks in the set should complete and return Ok(()). if any of them fail to do so,

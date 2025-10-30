@@ -37,7 +37,7 @@ type ChunkSender = UnboundedSender<(u64, Vec<u8>)>;
 pub async fn download_worker(ctx: WorkerContext) -> anyhow::Result<()> {
     debug!("Beginning worker task {}", ctx.worker_num);
     loop {
-        match ctx.task_provider.next_task() {
+        match ctx.task_provider.next_task_throttled().await {
             Some(wtask) => {
                 retry_request_chunk(&ctx, &wtask).await?;
             }

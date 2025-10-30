@@ -1,22 +1,30 @@
 use crate::api::sequential_chunk_consumer::SequentialChunkConsumer;
+use crate::task::TaskStats;
 use anyhow::bail;
+use std::cmp::max;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 use tokio::sync::mpsc;
 use tracing::error;
 
 pub async fn reorder_chunks(
     mut chunk_rx: mpsc::UnboundedReceiver<(u64, Vec<u8>)>,
     mut output: Box<dyn SequentialChunkConsumer>,
-    bytes_downloaded: Arc<AtomicU64>,
+    task_stats: Arc<TaskStats>,
 ) -> anyhow::Result<()> {
     let mut next_offset = 0;
     let mut pending_chunks: HashMap<u64, Vec<u8>> = HashMap::new();
     let mut err = None;
+
+    let mut furthest_offset: u64 = 0; // used for tracking cached bytes for backpressure
+
     loop {
         if let Some((offset, chunk)) = chunk_rx.recv().await {
-            bytes_downloaded.fetch_add(chunk.len() as u64, Ordering::SeqCst);
+            furthest_offset = max(offset + chunk.len() as u64, furthest_offset);
+            task_stats
+                .bytes_downloaded
+                .fetch_add(chunk.len() as u64, Ordering::SeqCst);
             if offset == next_offset {
                 // we could avoid duplicating this segment by un-conditionally inserting
                 // the chunk into the hashmap. need to experiment with this a bit more.
@@ -37,9 +45,18 @@ pub async fn reorder_chunks(
                     }
                     next_offset += len;
                 }
+
+                // TODO: is this check necessary? this *should* be provably impossible.
+                // need to think about the offset math a bit more.
+                if let Some(cached_bytes) = furthest_offset.checked_sub(next_offset) {
+                    task_stats
+                        .cached_bytes
+                        .store(cached_bytes, Ordering::SeqCst);
+                } else {
+                    bail!("next_offset={next_offset} ahead of furthest_offset={furthest_offset}");
+                }
             } else if offset > next_offset {
-                // todo: keep track of hashmap size
-                // todo: once we are tracking hashmap size and re-requesting backlogged data,
+                // todo: might it be beneficial to re-request backlogged data?
                 // we may need to handle overlapping chunks.
                 if pending_chunks.insert(offset, chunk).is_some() {
                     bail!("received duplicate chunk at offset {offset}");
