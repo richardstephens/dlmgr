@@ -3,7 +3,7 @@ use std::cmp::min;
 use std::sync::{Arc, RwLock};
 
 #[derive(Clone)]
-pub struct TaskProvider {
+pub(crate) struct TaskProvider {
     inner: Arc<TaskProviderInner>,
 }
 
