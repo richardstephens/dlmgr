@@ -8,8 +8,8 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub(crate) struct DownloadProps {
     pub(crate) task_count: u8,
-    pub(crate) chunk_size: u64,
-    pub(crate) max_buffer_size: Option<u64>,
+    pub(crate) chunk_size: u32,
+    pub(crate) max_buffer_size: Option<usize>,
     pub(crate) client_provider: Arc<Box<dyn ReqwestClientProvider>>,
 }
 
@@ -39,7 +39,7 @@ impl DownloadTaskBuilder {
         }
     }
 
-    pub fn with_chunk_size(mut self, chunk_size: u64) -> Result<Self, TaskBuilderError> {
+    pub fn with_chunk_size(mut self, chunk_size: u32) -> Result<Self, TaskBuilderError> {
         if chunk_size == 0 {
             Err(TaskBuilderError::InvalidParameterValue("chunk_size"))
         } else {
@@ -48,7 +48,10 @@ impl DownloadTaskBuilder {
         }
     }
 
-    pub fn with_max_buffer_size(mut self, max_buffer_size: u64) -> Result<Self, TaskBuilderError> {
+    pub fn with_max_buffer_size(
+        mut self,
+        max_buffer_size: usize,
+    ) -> Result<Self, TaskBuilderError> {
         if max_buffer_size == 0 {
             Err(TaskBuilderError::InvalidParameterValue("max_buffer_size"))
         } else {

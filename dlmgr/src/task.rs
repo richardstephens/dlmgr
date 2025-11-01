@@ -51,5 +51,4 @@ impl ProgressProvider {
 pub(crate) struct TaskStats {
     pub(crate) bytes_downloaded: AtomicU64,
     pub(crate) cached_bytes: AtomicU64,
-    pub(crate) throttle_events: AtomicU64,
 }

@@ -63,7 +63,7 @@ pub async fn spawn_download_task(
         completion_handle: chrx,
     };
 
-    let task_provider = TaskProvider::new_provider(&props, task_stats.clone(), content_length);
+    let task_provider = TaskProvider::new_provider(&props, content_length)?;
 
     let task_props = TaskProps {
         content_length,
