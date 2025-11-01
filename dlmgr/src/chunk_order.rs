@@ -5,22 +5,22 @@ use std::cmp::max;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use tokio::sync::mpsc;
+use tokio::sync::{OwnedSemaphorePermit, mpsc};
 use tracing::error;
 
 pub async fn reorder_chunks(
-    mut chunk_rx: mpsc::UnboundedReceiver<(u64, Vec<u8>)>,
+    mut chunk_rx: mpsc::UnboundedReceiver<(u64, Vec<u8>, Option<OwnedSemaphorePermit>)>,
     mut output: Box<dyn SequentialChunkConsumer>,
     task_stats: Arc<TaskStats>,
 ) -> anyhow::Result<()> {
     let mut next_offset = 0;
-    let mut pending_chunks: HashMap<u64, Vec<u8>> = HashMap::new();
+    let mut pending_chunks: HashMap<u64, (Vec<u8>, Option<OwnedSemaphorePermit>)> = HashMap::new();
     let mut err = None;
 
     let mut furthest_offset: u64 = 0; // used for tracking cached bytes for backpressure
 
     loop {
-        if let Some((offset, chunk)) = chunk_rx.recv().await {
+        if let Some((offset, chunk, permit)) = chunk_rx.recv().await {
             furthest_offset = max(offset + chunk.len() as u64, furthest_offset);
             task_stats
                 .bytes_downloaded
@@ -36,13 +36,14 @@ pub async fn reorder_chunks(
                 }
                 next_offset += len;
 
-                while let Some(chunk) = pending_chunks.remove(&next_offset) {
+                while let Some((chunk, permit)) = pending_chunks.remove(&next_offset) {
                     let len = chunk.len() as u64;
                     if let Err(e) = output.consume_bytes(chunk).await {
                         error!("Failed to write to output: {e}");
                         err = Some(e);
                         break;
                     }
+                    drop(permit);
                     next_offset += len;
                 }
 
@@ -58,7 +59,7 @@ pub async fn reorder_chunks(
             } else if offset > next_offset {
                 // todo: might it be beneficial to re-request backlogged data?
                 // we may need to handle overlapping chunks.
-                if pending_chunks.insert(offset, chunk).is_some() {
+                if pending_chunks.insert(offset, (chunk, permit)).is_some() {
                     bail!("received duplicate chunk at offset {offset}");
                 }
             } else {

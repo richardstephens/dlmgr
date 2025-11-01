@@ -17,6 +17,8 @@ pub enum DlMgrSetupError {
     NoContentLengthHeader,
     #[error("InconsistentContentLength")]
     InconsistentContentLength,
+    #[error("InvalidMaxBufferChunks")]
+    InvalidMaxBufferChunks,
     #[error("ReqwestClientBuildError: {0}")]
     ReqwestClientBuildError(reqwest::Error),
 }

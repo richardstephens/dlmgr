@@ -5,6 +5,7 @@ use crate::task_provider::TaskProvider;
 use reqwest::header::RANGE;
 use std::time::Duration;
 use thiserror::Error;
+use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::Instant;
 use tracing::{debug, trace, warn};
@@ -32,33 +33,40 @@ pub(crate) struct DlWorkerTask {
     pub len: u64,
 }
 
-type ChunkSender = UnboundedSender<(u64, Vec<u8>)>;
+type ChunkSender = UnboundedSender<(u64, Vec<u8>, Option<OwnedSemaphorePermit>)>;
 
 pub async fn download_worker(ctx: WorkerContext) -> anyhow::Result<()> {
     debug!("Beginning worker task {}", ctx.worker_num);
     loop {
         match ctx.task_provider.next_task_throttled().await {
-            Some(wtask) => {
-                retry_request_chunk(&ctx, &wtask).await?;
+            Ok(Some((wtask, permit))) => {
+                retry_request_chunk(&ctx, &wtask, permit).await?;
             }
-            None => {
+            Ok(None) => {
                 debug!("Worker {} exiting", ctx.worker_num);
                 return Ok(());
             }
+            Err(_) => {}
         }
     }
 }
-async fn retry_request_chunk(ctx: &WorkerContext, wtask: &DlWorkerTask) -> anyhow::Result<()> {
+async fn retry_request_chunk(
+    ctx: &WorkerContext,
+    wtask: &DlWorkerTask,
+    permit: OwnedSemaphorePermit,
+) -> anyhow::Result<()> {
     let mut offset = wtask.offset;
     let mut len = wtask.len;
     let mut backoff = Duration::from_secs(1);
     let mut last_success = Instant::now();
     let mut attempt = 0;
+
+    let mut permit_container = Some(permit);
     loop {
         // currently we rely on reqwest's timeout. Should we add our own timeout here?
         let url = ctx.url_set.url(ctx.worker_num, attempt);
         attempt += 1;
-        match request_chunk(ctx, url.clone(), offset, len).await {
+        match request_chunk(ctx, url.clone(), offset, len, &mut permit_container).await {
             Ok(received_len) => {
                 attempt = 0;
                 backoff = Duration::from_secs(1);
@@ -101,6 +109,7 @@ async fn request_chunk(
     url: Url,
     request_offset: u64,
     len: u64,
+    permit_container: &mut Option<OwnedSemaphorePermit>,
 ) -> Result<u64, RequestChunkError> {
     let range_end_pos = request_offset + len - 1;
     let range_header_val = format!("bytes={request_offset}-{range_end_pos}");
@@ -121,14 +130,28 @@ async fn request_chunk(
                 // it turns out that, for HTTP2, reqwest will send us a 0-length chunk at the end.
                 // No need to forward this onwards.
                 if chunk_len > 0 {
+                    //TODO: correctness-check this offset math
+                    let permit = if bytes_sent + chunk_len >= len {
+                        if permit_container.is_none() {
+                            return Err(RequestChunkError::SubmitChunkError);
+                        }
+                        permit_container.take()
+                    } else {
+                        None
+                    };
+
                     ctx.tx
-                        .send((request_offset + bytes_sent, chunk.into()))
+                        .send((request_offset + bytes_sent, chunk.into(), permit))
                         .map_err(|_| RequestChunkError::SubmitChunkError)?;
                 }
 
                 bytes_sent += chunk_len;
             }
             Ok(None) => {
+                //todo:check this logic too. also maybe a purpose-specific error
+                if permit_container.is_some() {
+                    return Err(RequestChunkError::SubmitChunkError);
+                }
                 return Ok(bytes_sent);
             }
             Err(e) => {
