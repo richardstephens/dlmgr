@@ -13,6 +13,7 @@ use tokio::task::JoinSet;
 use tracing::{debug, error};
 
 struct TaskProps {
+    #[allow(unused)]
     content_length: u64,
     task_stats: Arc<TaskStats>,
     initial_client: Option<reqwest::Client>,
@@ -62,6 +63,8 @@ pub async fn spawn_download_task(
         completion_handle: chrx,
     };
 
+    let task_provider = TaskProvider::new_provider(&props, task_stats.clone(), content_length);
+
     let task_props = TaskProps {
         content_length,
         task_stats,
@@ -70,7 +73,7 @@ pub async fn spawn_download_task(
     };
 
     tokio::spawn(async move {
-        let dl_result = exec_download(url_set, task_props, chunk_consumer).await;
+        let dl_result = exec_download(task_provider, url_set, task_props, chunk_consumer).await;
         chtx.send(dl_result).ok();
     });
 
@@ -78,16 +81,11 @@ pub async fn spawn_download_task(
 }
 
 async fn exec_download(
+    task_provider: TaskProvider,
     url_set: UrlSet,
     mut props: TaskProps,
     chunk_consumer: Box<dyn SequentialChunkConsumer>,
 ) -> Result<(), DlMgrCompletionError> {
-    let task_provider = TaskProvider::new_provider(
-        &props.dl_props,
-        props.task_stats.clone(),
-        props.content_length,
-    );
-
     let (chunk_tx, chunk_rx) = tokio::sync::mpsc::unbounded_channel();
 
     let mut join_set = JoinSet::new();
