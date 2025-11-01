@@ -1,6 +1,6 @@
 use crate::error::DlMgrCompletionError;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tokio::sync::oneshot;
 
 pub struct DownloadTask {
@@ -52,4 +52,5 @@ pub(crate) struct TaskStats {
     pub(crate) bytes_downloaded: AtomicU64,
     pub(crate) cached_bytes: AtomicU64,
     pub(crate) throttle_events: AtomicU64,
+    pub(crate) channel_len: AtomicUsize,
 }

@@ -21,6 +21,9 @@ pub async fn reorder_chunks(
 
     loop {
         if let Some((offset, chunk)) = chunk_rx.recv().await {
+            task_stats
+                .channel_len
+                .store(chunk_rx.len(), Ordering::SeqCst);
             furthest_offset = max(offset + chunk.len() as u64, furthest_offset);
             task_stats
                 .bytes_downloaded
@@ -37,6 +40,9 @@ pub async fn reorder_chunks(
                 next_offset += len;
 
                 while let Some(chunk) = pending_chunks.remove(&next_offset) {
+                    task_stats
+                        .channel_len
+                        .store(chunk_rx.len(), Ordering::SeqCst);
                     let len = chunk.len() as u64;
                     if let Err(e) = output.consume_bytes(chunk).await {
                         error!("Failed to write to output: {e}");

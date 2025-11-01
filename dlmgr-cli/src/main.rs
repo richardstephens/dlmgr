@@ -1,8 +1,9 @@
 use clap::Parser;
+use dlmgr::DownloadTaskBuilder;
 use dlmgr::consumers::in_memory_hashing::HashingChunkConsumer;
 use indicatif::ProgressBar;
-
-use dlmgr::DownloadTaskBuilder;
+use std::time::Duration;
+use tokio::time::Instant;
 use tracing::{Level, info};
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 use tracing_subscriber::layer::SubscriberExt;
@@ -47,12 +48,18 @@ pub async fn main() -> anyhow::Result<()> {
 
     if !args.verbose {
         let bar = ProgressBar::new(progress.content_length());
+
+        let mut last_stats_print = Instant::now();
         loop {
             let bytes_downloaded = progress.bytes_downloaded();
 
             bar.set_position(bytes_downloaded);
             if bytes_downloaded >= progress.content_length() {
                 break;
+            }
+            if last_stats_print.elapsed() > Duration::from_secs(10) {
+                bar.println(format!("Stats: {:#?}", progress));
+                last_stats_print = Instant::now();
             }
         }
         bar.finish();
