@@ -14,11 +14,29 @@ use url::Url;
 #[derive(Error, Debug)]
 pub enum RequestChunkError {
     #[error(transparent)]
-    Reqwest(#[from] reqwest::Error),
+    Fatal(#[from] FatalRequestChunkError),
+    #[error(transparent)]
+    Retryable(#[from] RetryableRequestChunkError),
+}
+
+#[derive(Error, Debug)]
+pub enum FatalRequestChunkError {
     #[error("SubmitChunkError")]
-    SubmitChunkError,
+    SubmitChunk,
     #[error("SplitPermitError: {0}")]
-    SplitPermitError(String),
+    SplitPermit(String),
+}
+
+#[derive(Error, Debug)]
+pub enum RetryableRequestChunkError {
+    #[error(transparent)]
+    Reqwest(reqwest::Error),
+}
+
+impl From<reqwest::Error> for RequestChunkError {
+    fn from(e: reqwest::Error) -> Self {
+        RequestChunkError::Retryable(RetryableRequestChunkError::Reqwest(e))
+    }
 }
 
 pub(crate) struct WorkerContext {
@@ -85,7 +103,7 @@ async fn retry_request_chunk(
                     len -= received_len;
                 }
             }
-            Err(RequestChunkError::Reqwest(e)) => {
+            Err(RequestChunkError::Retryable(e)) => {
                 if last_success.elapsed() > Duration::from_secs(60 * 30) {
                     bail!(
                         "Worker {} too many consecutive failures, giving up. Last error: {:?}",
@@ -99,7 +117,7 @@ async fn retry_request_chunk(
                     backoff = backoff * 2;
                 }
             }
-            Err(e) => {
+            Err(RequestChunkError::Fatal(e)) => {
                 bail!("Request chunk failed: {:?}", e);
             }
         }
@@ -135,7 +153,7 @@ async fn request_chunk(
                     let permits = split_permits(permit_container, chunk_len)?;
                     ctx.tx
                         .send((request_offset + bytes_sent, chunk.into(), permits))
-                        .map_err(|_| RequestChunkError::SubmitChunkError)?;
+                        .map_err(|_| FatalRequestChunkError::SubmitChunk)?;
                 }
 
                 bytes_sent += chunk_len;
@@ -143,7 +161,7 @@ async fn request_chunk(
             Ok(None) => {
                 //todo:does this make sense?
                 if permit_container.is_some() {
-                    return Err(RequestChunkError::SubmitChunkError);
+                    return Err(FatalRequestChunkError::SubmitChunk.into());
                 }
                 return Ok(bytes_sent);
             }
@@ -155,7 +173,7 @@ async fn request_chunk(
                     );
                     Ok(bytes_sent)
                 } else {
-                    Err(RequestChunkError::Reqwest(e))
+                    Err(e.into())
                 };
             }
         }
@@ -173,14 +191,13 @@ fn split_permits(
             }
             Ok(split_permits)
         } else {
-            Err(RequestChunkError::SplitPermitError(format!(
+            Err(FatalRequestChunkError::SplitPermit(format!(
                 "Not enough permits available. Requested={count} avail={}",
                 permits.num_permits()
-            )))
+            ))
+            .into())
         };
     } else {
-        Err(RequestChunkError::SplitPermitError(
-            "permit_container already empty".into(),
-        ))
+        Err(FatalRequestChunkError::SplitPermit("permit_container already empty".into()).into())
     }
 }
