@@ -2,6 +2,7 @@ use crate::urlset::UrlSet;
 use anyhow::bail;
 
 use crate::task_provider::TaskProvider;
+use reqwest::StatusCode;
 use reqwest::header::RANGE;
 use std::time::Duration;
 use thiserror::Error;
@@ -31,6 +32,8 @@ pub enum FatalRequestChunkError {
 pub enum RetryableRequestChunkError {
     #[error(transparent)]
     Reqwest(reqwest::Error),
+    #[error("InvalidResponseType: {0}. Required 206 Partial Content.")]
+    InvalidResponseType(StatusCode),
 }
 
 impl From<reqwest::Error> for RequestChunkError {
@@ -140,6 +143,11 @@ async fn request_chunk(
         .header(RANGE, &range_header_val)
         .send()
         .await?;
+
+    if resp.status() != StatusCode::PARTIAL_CONTENT {
+        return Err(RetryableRequestChunkError::InvalidResponseType(resp.status()).into());
+    }
+    // TODO: we should validate that we got a range header here and that it matches the requested range.
 
     let mut bytes_sent: u64 = 0;
     loop {
