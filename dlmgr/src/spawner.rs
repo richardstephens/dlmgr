@@ -8,16 +8,20 @@ use crate::task_provider::TaskProvider;
 use crate::urlset::UrlSet;
 use crate::worker::{WorkerContext, download_worker};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 use tracing::{debug, error};
+use url::Url;
 
 struct TaskProps {
     #[allow(unused)]
     content_length: u64,
     task_stats: Arc<TaskStats>,
-    initial_client: Option<reqwest::Client>,
     dl_props: DownloadProps,
+}
+struct ValidateUrlOutcome {
+    content_length: u64,
 }
 
 pub async fn spawn_download_task(
@@ -25,30 +29,18 @@ pub async fn spawn_download_task(
     chunk_consumer: Box<dyn SequentialChunkConsumer>,
     props: DownloadProps,
 ) -> Result<DownloadTask, DlMgrSetupError> {
-    let client = props
-        .client_provider
-        .client()
-        .map_err(DlMgrSetupError::ReqwestClientBuildError)?;
+
     let mut content_length: Option<u64> = None;
     let all_urls = url_set.all();
     debug!("Validating from {} urls", all_urls.len());
+    let mut validate_url_joinset = JoinSet::new();
     for url in all_urls {
-        let head_resp = client
-            .head(url.clone())
-            .send()
-            .await
-            .map_err(|e| DlMgrSetupError::HeadRequestFailed(url, e))?;
+        let client = props
+            .client_provider
+            .client()
+            .map_err(DlMgrSetupError::ReqwestClientBuildError)?;
+        validate_url_joinset.spawn(validate_url_retried(client, url.clone(), props.validate_retry_limit));
 
-        assert_supports_range_requests(&head_resp)?;
-
-        let this_content_length = extract_content_length(&head_resp)?;
-        if let Some(cl) = content_length {
-            if cl != this_content_length {
-                return Err(DlMgrSetupError::InconsistentContentLength);
-            }
-        } else {
-            content_length = Some(this_content_length);
-        }
     }
 
     let content_length: u64 = content_length.ok_or(DlMgrSetupError::NoContentLengthHeader)?;
@@ -68,7 +60,6 @@ pub async fn spawn_download_task(
     let task_props = TaskProps {
         content_length,
         task_stats,
-        initial_client: Some(client),
         dl_props: props,
     };
 
@@ -79,6 +70,45 @@ pub async fn spawn_download_task(
 
     Ok(download_task)
 }
+async fn validate_url_retried(client: reqwest::Client, url: Url, retry_limit: u8)-> Result<ValidateUrlOutcome, DlMgrSetupError> {
+    let mut tries = 0;
+    loop {
+        match validate_url(&client, &url).await {
+            Ok(outcome) => return Ok(outcome),
+            Err(e) => {
+                tries += 1;
+                if tries >= retry_limit {
+                    return Err(e);
+                } else {
+                    tokio::time::sleep(Duration::from_millis(500 * tries as u64)).await;
+                }
+            }
+        }
+
+    }
+}
+
+async fn validate_url(client: &reqwest::Client, url: &Url) -> Result<ValidateUrlOutcome, DlMgrSetupError> {
+    let head_resp = client
+        .head(url.clone())
+        .send()
+        .await
+        .map_err(|e| DlMgrSetupError::HeadRequestFailed(url, e))?;
+
+    let content_length = extract_content_length(&head_resp)?;
+
+    if assert_supports_range_requests(&head_resp).is_err() {
+        attempt_one_byte_range_request(&client, url).await?;
+    }
+
+    Ok(ValidateUrlOutcome { content_length })
+
+}
+
+async fn attempt_one_byte_range_request(client: &reqwest::Client, url: &Url) -> Result<(), DlMgrSetupError> {
+    
+}
+
 
 async fn exec_download(
     task_provider: TaskProvider,
@@ -92,11 +122,7 @@ async fn exec_download(
 
     //spawn workers
     for ii in 0..props.dl_props.task_count {
-        let client = props
-            .initial_client
-            .take()
-            .map(Ok)
-            .unwrap_or_else(|| props.dl_props.client_provider.client())
+        let client  = props.dl_props.client_provider.client()
             .map_err(|e| DlMgrCompletionError::ReqwestClientBuildError(e))?;
         join_set.spawn(download_worker(WorkerContext {
             worker_num: ii,

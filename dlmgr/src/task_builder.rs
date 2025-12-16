@@ -10,6 +10,7 @@ pub(crate) struct DownloadProps {
     pub(crate) task_count: u8,
     pub(crate) chunk_size: u32,
     pub(crate) max_buffer_size: Option<usize>,
+    pub(crate) validate_retry_limit: u8,
     pub(crate) client_provider: Arc<Box<dyn ReqwestClientProvider>>,
 }
 
@@ -25,6 +26,7 @@ impl DownloadTaskBuilder {
                 task_count: 4,
                 chunk_size: 4 * 1024 * 1024,
                 max_buffer_size: None,
+                validate_retry_limit: 5,
                 client_provider: Arc::new(Box::new(DefaultReqwestClientProvider)),
             },
         }
@@ -66,6 +68,11 @@ impl DownloadTaskBuilder {
     ) -> Result<Self, TaskBuilderError> {
         self.props.client_provider = Arc::new(provider);
         Ok(self)
+    }
+
+    pub fn with_validate_retry_limit(mut self, limit: u8) -> Self {
+        self.props.validate_retry_limit = limit;
+        self
     }
 
     pub async fn begin_download(

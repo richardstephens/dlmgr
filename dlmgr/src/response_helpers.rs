@@ -8,6 +8,8 @@ pub(crate) fn assert_supports_range_requests(
         .headers()
         .get(ACCEPT_RANGES)
         .ok_or(DlMgrSetupError::RangeRequestsUnsupported)?;
+    //TODO: we have seen this errantly fail from CDNs that *should* support them.
+    // It might be nice to log the exact response headers in this case.
     if header_val == HeaderValue::from_static("none") {
         Err(DlMgrSetupError::RangeRequestsUnsupported)
     } else {
