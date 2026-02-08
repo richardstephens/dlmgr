@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "dlmgr"
-version = "0.2.0"
+version = "0.2.1-dev"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -442,7 +442,7 @@ dependencies = [
 
 [[package]]
 name = "dlmgr-cli"
-version = "0.2.0"
+version = "0.2.1-dev"
 dependencies = [
  "anyhow",
  "clap",
