@@ -8,14 +8,14 @@ resolver = "2"
 
 [workspace.package]
 authors = ["Richard Stephens <richard@richst.dev>"]
-version = "0.1.4-dev"
+version = "0.2.0-dev"
 readme = "README.md"
 edition = "2024"
 license = "MPL-2.0"
 repository = "https://github.com/richardstephens/dlmgr"
 
 [workspace.dependencies]
-dlmgr = {path = "dlmgr", version = "0.1.4-dev"}
+dlmgr = {path = "dlmgr", version = "0.2.0-dev"}
 
 [profile.dev]
 panic = "abort"
