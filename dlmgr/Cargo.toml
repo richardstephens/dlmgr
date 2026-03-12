@@ -11,6 +11,7 @@ readme.workspace = true
 [dependencies]
 anyhow = "1.0.100"
 async-trait = "0.1.89"
+atomic-write-file = "0.3.0"
 hex = "0.4.3"
 reqwest = { version = "0.13.2", default-features = false }
 sha2 = "0.10.9"
