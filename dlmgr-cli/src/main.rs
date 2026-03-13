@@ -1,8 +1,12 @@
+use anyhow::{anyhow, bail};
 use clap::Parser;
 use dlmgr::consumers::in_memory_hashing::HashingChunkConsumer;
 use indicatif::ProgressBar;
+use std::path::PathBuf;
 
 use dlmgr::DownloadTaskBuilder;
+use dlmgr::api::sequential_chunk_consumer::SequentialChunkConsumer;
+use dlmgr::consumers::atomic_file_consumer_sha256::AtomicFileConsumerSha256;
 use tracing::{Level, info};
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 use tracing_subscriber::layer::SubscriberExt;
@@ -15,6 +19,11 @@ pub struct Args {
     pub verbose: bool,
     #[clap(long)]
     pub url: Vec<String>,
+
+    #[clap(long)]
+    pub output: Option<PathBuf>,
+    #[clap(long)]
+    pub expected_sha256: Option<String>,
 }
 impl Args {
     fn log_level(&self) -> Level {
@@ -39,8 +48,25 @@ pub async fn main() -> anyhow::Result<()> {
         .iter()
         .map(|u| Url::parse(u))
         .collect::<Result<Vec<_>, _>>()?;
+
+    let (consumer, completion): (Box<dyn SequentialChunkConsumer>, Option<_>) =
+        if let (Some(output), Some(expected_sha256)) =
+            (args.output.as_deref(), args.expected_sha256.as_deref())
+        {
+            let expected_sha256: [u8; 32] = hex::decode(expected_sha256)?
+                .try_into()
+                .map_err(|_e| anyhow!("invalid hex for sha256 hash"))?;
+            let (consumer, completion) =
+                AtomicFileConsumerSha256::new(output.to_path_buf(), expected_sha256).await?;
+            (Box::new(consumer), Some(completion))
+        } else if args.output.is_none() && args.expected_sha256.is_none() {
+            (Box::new(HashingChunkConsumer::new()), None)
+        } else {
+            bail!("To save the downloaded file, both `output` and `expected_sha256` are required.");
+        };
+
     let download = task_builder
-        .begin_download(urls.into_iter().collect(), HashingChunkConsumer::new())
+        .begin_download(urls.into_iter().collect(), consumer)
         .await?;
 
     let progress = download.progress_provider();
@@ -61,6 +87,10 @@ pub async fn main() -> anyhow::Result<()> {
     info!("Stats: {:#?}", progress);
 
     download.await_completion().await?;
+
+    if let Some(completion) = completion {
+        completion.await??;
+    };
 
     Ok(())
 }
