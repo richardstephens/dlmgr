@@ -4,7 +4,7 @@ use dlmgr::consumers::in_memory_hashing::HashingChunkConsumer;
 use indicatif::ProgressBar;
 use std::path::PathBuf;
 
-use dlmgr::DownloadTaskBuilder;
+use dlmgr::{DownloadTask, DownloadTaskBuilder, ProgressProvider};
 use dlmgr::api::sequential_chunk_consumer::SequentialChunkConsumer;
 use dlmgr::consumers::atomic_file_consumer_sha256::AtomicFileConsumerSha256;
 use tracing::{Level, info};
@@ -65,11 +65,11 @@ pub async fn main() -> anyhow::Result<()> {
             bail!("To save the downloaded file, both `output` and `expected_sha256` are required.");
         };
 
-    let download = task_builder
+    let download : DownloadTask= task_builder
         .begin_download(urls.into_iter().collect(), consumer)
         .await?;
 
-    let progress = download.progress_provider();
+    let progress: ProgressProvider = download.progress_provider();
 
     if !args.verbose {
         let bar = ProgressBar::new(progress.content_length());

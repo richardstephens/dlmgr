@@ -11,3 +11,4 @@ pub(crate) mod urlset;
 mod worker;
 
 pub use task_builder::DownloadTaskBuilder;
+pub use task::{DownloadTask, ProgressProvider};
