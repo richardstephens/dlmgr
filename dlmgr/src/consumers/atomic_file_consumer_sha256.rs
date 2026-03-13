@@ -66,7 +66,7 @@ impl SequentialChunkConsumer for AtomicFileConsumerSha256 {
         let outcome = if hash == self.expected_hash {
             commit_file(&self.file).await
         } else {
-            Err(anyhow!("Hash mismatch: actual={}", hex::encode(&hash)))
+            Err(anyhow!("Hash mismatch: actual={}", hex::encode(hash)))
         };
         if let Some(tx) = self.tx.take() {
             tx.send(outcome).ok();

@@ -73,6 +73,6 @@ impl DownloadTaskBuilder {
         url: UrlSet,
         target: impl Into<Box<dyn SequentialChunkConsumer>>,
     ) -> Result<DownloadTask, DlMgrSetupError> {
-        crate::spawner::spawn_download_task(url.into(), target.into(), self.props.clone()).await
+        crate::spawner::spawn_download_task(url, target.into(), self.props.clone()).await
     }
 }

@@ -97,7 +97,7 @@ async fn exec_download(
             .take()
             .map(Ok)
             .unwrap_or_else(|| props.dl_props.client_provider.client())
-            .map_err(|e| DlMgrCompletionError::ReqwestClientBuildError(e))?;
+            .map_err(DlMgrCompletionError::ReqwestClientBuildError)?;
         join_set.spawn(download_worker(WorkerContext {
             worker_num: ii,
             task_provider: task_provider.clone(),

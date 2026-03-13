@@ -96,7 +96,7 @@ async fn retry_request_chunk(
                     warn!("Worker {} Error downloading chunk: {:?}", ctx.worker_num, e);
                 }
                 if backoff.as_secs() < 60 {
-                    backoff = backoff * 2;
+                    backoff *= 2;
                 }
             }
             Err(e) => {
@@ -167,7 +167,7 @@ fn split_permits(
     count: u64,
 ) -> Result<OwnedSemaphorePermit, RequestChunkError> {
     if let Some(permits) = permit_container.as_mut() {
-        return if let Some(split_permits) = permits.split(count as usize) {
+        if let Some(split_permits) = permits.split(count as usize) {
             if permits.num_permits() == 0 {
                 *permit_container = None;
             }
@@ -177,7 +177,7 @@ fn split_permits(
                 "Not enough permits available. Requested={count} avail={}",
                 permits.num_permits()
             )))
-        };
+        }
     } else {
         Err(RequestChunkError::SplitPermitError(
             "permit_container already empty".into(),
