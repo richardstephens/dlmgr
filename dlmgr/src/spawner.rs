@@ -10,7 +10,7 @@ use crate::worker::{WorkerContext, download_worker};
 use std::sync::Arc;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
-use tracing::{debug, error};
+use tracing::debug;
 
 struct TaskProps {
     #[allow(unused)]
@@ -122,7 +122,8 @@ async fn exec_download(
     while let Some(outcome) = join_set.join_next().await {
         match outcome {
             Ok(Ok(())) => {}
-            x => error!("{:?}", x),
+            Ok(Err(e)) => return Err(DlMgrCompletionError::TaskFailed(e)),
+            Err(e) => return Err(DlMgrCompletionError::TaskPanicked(e)),
         }
     }
 

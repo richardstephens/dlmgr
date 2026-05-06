@@ -29,4 +29,8 @@ pub enum DlMgrCompletionError {
     CompletionHandleDropped,
     #[error("ReqwestClientBuildError: {0}")]
     ReqwestClientBuildError(reqwest::Error),
+    #[error("Download task failed: {0}")]
+    TaskFailed(#[source] anyhow::Error),
+    #[error("Download task panicked: {0}")]
+    TaskPanicked(#[source] tokio::task::JoinError),
 }
