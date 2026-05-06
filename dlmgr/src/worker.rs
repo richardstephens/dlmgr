@@ -1,36 +1,14 @@
 use crate::urlset::UrlSet;
 
-use crate::error::DownloadWorkerError;
+use crate::error::{DownloadWorkerError, RequestChunkError};
 use crate::task_provider::TaskProvider;
 use reqwest::header::RANGE;
 use std::time::Duration;
-use thiserror::Error;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::Instant;
 use tracing::{debug, trace, warn};
 use url::Url;
-
-#[derive(Error, Debug)]
-pub enum RequestChunkError {
-    #[error(transparent)]
-    Reqwest(#[from] reqwest::Error),
-    #[error("SubmitChunkError")]
-    SubmitChunkError,
-    #[error("SplitPermitError: {0}")]
-    SplitPermitError(String),
-    #[error(
-        "Received excess bytes from url={url}. task.offset={wtask_offset} task.len={wtask_len} offset={offset} len={len} received_len={received_len}"
-    )]
-    ExcessBytes {
-        url: Url,
-        wtask_offset: u64,
-        wtask_len: u64,
-        offset: u64,
-        len: u64,
-        received_len: u64,
-    },
-}
 
 pub(crate) struct WorkerContext {
     pub(crate) worker_num: u8,

@@ -1,4 +1,3 @@
-use crate::worker::RequestChunkError;
 use thiserror::Error;
 use url::Url;
 
@@ -44,6 +43,27 @@ pub enum DownloadWorkerError {
     Fatal(u8, #[source] RequestChunkError),
     #[error("Re-order chunks error: {0}")]
     ReorderChunks(#[source] ReorderChunkError),
+}
+
+#[derive(Error, Debug)]
+pub enum RequestChunkError {
+    #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
+    #[error("SubmitChunkError")]
+    SubmitChunkError,
+    #[error("SplitPermitError: {0}")]
+    SplitPermitError(String),
+    #[error(
+        "Received excess bytes from url={url}. task.offset={wtask_offset} task.len={wtask_len} offset={offset} len={len} received_len={received_len}"
+    )]
+    ExcessBytes {
+        url: Url,
+        wtask_offset: u64,
+        wtask_len: u64,
+        offset: u64,
+        len: u64,
+        received_len: u64,
+    },
 }
 
 #[derive(Error, Debug)]
