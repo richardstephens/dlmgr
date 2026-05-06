@@ -1,6 +1,6 @@
 use crate::urlset::UrlSet;
-use anyhow::bail;
 
+use crate::error::DownloadWorkerError;
 use crate::task_provider::TaskProvider;
 use reqwest::header::RANGE;
 use std::time::Duration;
@@ -19,6 +19,17 @@ pub enum RequestChunkError {
     SubmitChunkError,
     #[error("SplitPermitError: {0}")]
     SplitPermitError(String),
+    #[error(
+        "Received excess bytes from url={url}. task.offset={wtask_offset} task.len={wtask_len} offset={offset} len={len} received_len={received_len}"
+    )]
+    ExcessBytes {
+        url: Url,
+        wtask_offset: u64,
+        wtask_len: u64,
+        offset: u64,
+        len: u64,
+        received_len: u64,
+    },
 }
 
 pub(crate) struct WorkerContext {
@@ -37,7 +48,7 @@ pub(crate) struct DlWorkerTask {
 
 type ChunkSender = UnboundedSender<(u64, Vec<u8>, OwnedSemaphorePermit)>;
 
-pub async fn download_worker(ctx: WorkerContext) -> anyhow::Result<()> {
+pub async fn download_worker(ctx: WorkerContext) -> Result<(), DownloadWorkerError> {
     debug!("Beginning worker task {}", ctx.worker_num);
     loop {
         match ctx.task_provider.next_task_throttled().await {
@@ -56,7 +67,7 @@ async fn retry_request_chunk(
     ctx: &WorkerContext,
     wtask: &DlWorkerTask,
     permit: OwnedSemaphorePermit,
-) -> anyhow::Result<()> {
+) -> Result<(), DownloadWorkerError> {
     let mut offset = wtask.offset;
     let mut len = wtask.len;
     let mut backoff = Duration::from_secs(1);
@@ -74,10 +85,17 @@ async fn retry_request_chunk(
                 backoff = Duration::from_secs(1);
                 last_success = Instant::now();
                 if received_len > len {
-                    bail!(
-                        "Worker {} received excess bytes from url={url}. wtask={wtask:?} len={len} received_len={received_len}",
-                        ctx.worker_num
-                    );
+                    return Err(DownloadWorkerError::Fatal(
+                        ctx.worker_num,
+                        RequestChunkError::ExcessBytes {
+                            url,
+                            wtask_offset: wtask.offset,
+                            wtask_len: wtask.len,
+                            offset,
+                            len,
+                            received_len,
+                        },
+                    ));
                 } else if received_len == len {
                     return Ok(());
                 } else {
@@ -87,11 +105,10 @@ async fn retry_request_chunk(
             }
             Err(RequestChunkError::Reqwest(e)) => {
                 if last_success.elapsed() > Duration::from_secs(60 * 30) {
-                    bail!(
-                        "Worker {} too many consecutive failures, giving up. Last error: {:?}",
+                    return Err(DownloadWorkerError::TooManyConsecutiveFailures(
                         ctx.worker_num,
-                        e
-                    );
+                        e,
+                    ));
                 } else {
                     warn!("Worker {} Error downloading chunk: {:?}", ctx.worker_num, e);
                 }
@@ -100,7 +117,7 @@ async fn retry_request_chunk(
                 }
             }
             Err(e) => {
-                bail!("Request chunk failed: {:?}", e);
+                return Err(DownloadWorkerError::Fatal(ctx.worker_num, e));
             }
         }
     }
