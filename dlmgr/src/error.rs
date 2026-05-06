@@ -2,12 +2,14 @@ use thiserror::Error;
 use url::Url;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum TaskBuilderError {
     #[error("Invalid parameter value: {0}")]
     InvalidParameterValue(&'static str),
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum DlMgrSetupError {
     #[error("HEAD request to url={0} failed: {0}")]
     HeadRequestFailed(Url, reqwest::Error),
@@ -24,6 +26,7 @@ pub enum DlMgrSetupError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum DlMgrCompletionError {
     #[error("Completion handle unexpectedly dropped. This is probably a bug.")]
     CompletionHandleDropped,
@@ -46,6 +49,7 @@ pub enum DownloadWorkerError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum RequestChunkError {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
@@ -67,6 +71,7 @@ pub enum RequestChunkError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum ReorderChunkError {
     #[error("Chunk consumer failed to consume bytes: {0}")]
     ChunkConsumer(#[source] anyhow::Error),
