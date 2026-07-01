@@ -11,7 +11,7 @@ pub enum TaskBuilderError {
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum DlMgrSetupError {
-    #[error("HEAD request to url={0} failed: {0}")]
+    #[error("HEAD request to url={0} failed: {1}")]
     HeadRequestFailed(Url, reqwest::Error),
     #[error("Server does not support range requests")]
     RangeRequestsUnsupported,
@@ -39,6 +39,7 @@ pub enum DlMgrCompletionError {
 }
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum DownloadWorkerError {
     #[error("Worker {0} too many consecutive non-fatal failures, giving up. Last error: {1}")]
     TooManyConsecutiveFailures(u8, reqwest::Error),
