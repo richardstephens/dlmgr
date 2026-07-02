@@ -23,6 +23,8 @@ pub enum DlMgrSetupError {
     InvalidMaxBufferSize,
     #[error("ReqwestClientBuildError: {0}")]
     ReqwestClientBuildError(reqwest::Error),
+    #[error("Not implemented: {0}")]
+    NotImplemented(&'static str),
 }
 
 #[derive(Error, Debug)]

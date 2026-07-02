@@ -1,12 +1,13 @@
 use crate::api::sequential_chunk_consumer::SequentialChunkConsumer;
 use crate::chunk_order::reorder_chunks;
 use crate::error::{DlMgrCompletionError, DlMgrSetupError};
-use crate::response_helpers::{assert_supports_range_requests, extract_content_length};
+use crate::response_helpers::{detect_range_support, extract_content_length};
 use crate::task::{DownloadTask, TaskStats};
-use crate::task_builder::DownloadProps;
+use crate::task_builder::{ConcurrencyBehaviour, DownloadProps};
 use crate::task_provider::TaskProvider;
 use crate::urlset::UrlSet;
 use crate::worker::{WorkerContext, download_worker};
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
@@ -23,23 +24,31 @@ struct TaskProps {
 pub async fn spawn_download_task(
     url_set: UrlSet,
     chunk_consumer: Box<dyn SequentialChunkConsumer>,
-    props: DownloadProps,
+    mut props: DownloadProps,
 ) -> Result<DownloadTask, DlMgrSetupError> {
     let client = props
         .client_provider
         .client()
         .map_err(DlMgrSetupError::ReqwestClientBuildError)?;
     let mut content_length: Option<u64> = None;
+
     let all_urls = url_set.all();
     debug!("Validating from {} urls", all_urls.len());
+    let mut urls_range_supported = HashSet::new();
+    let mut urls_range_unsupported = HashSet::new();
+
     for url in all_urls {
         let head_resp = client
             .head(url.clone())
             .send()
             .await
-            .map_err(|e| DlMgrSetupError::HeadRequestFailed(url, e))?;
+            .map_err(|e| DlMgrSetupError::HeadRequestFailed(url.clone(), e))?;
 
-        assert_supports_range_requests(&head_resp)?;
+        if detect_range_support(&head_resp) {
+            urls_range_supported.insert(url.clone());
+        } else {
+            urls_range_unsupported.insert(url.clone());
+        }
 
         let this_content_length = extract_content_length(&head_resp)?;
         if let Some(cl) = content_length {
@@ -54,6 +63,31 @@ pub async fn spawn_download_task(
     let content_length: u64 = content_length.ok_or(DlMgrSetupError::NoContentLengthHeader)?;
     debug!("All urls agreed that content_length={content_length}");
 
+    let final_url_set;
+    let concurrency_enabled = match props.concurrency_behaviour {
+        ConcurrencyBehaviour::Prefer => {
+            if !urls_range_supported.is_empty() {
+                final_url_set = urls_range_supported.into_iter().collect();
+                true
+            } else {
+                final_url_set = url_set;
+                false
+            }
+        }
+        ConcurrencyBehaviour::Require => {
+            if urls_range_supported.is_empty() {
+                return Err(DlMgrSetupError::RangeRequestsUnsupported);
+            } else {
+                final_url_set = urls_range_supported.into_iter().collect();
+            };
+            true
+        }
+        ConcurrencyBehaviour::Disabled => {
+            final_url_set = url_set;
+            false
+        }
+    };
+
     let (chtx, chrx) = oneshot::channel();
 
     let task_stats = Arc::new(TaskStats::default());
@@ -63,7 +97,14 @@ pub async fn spawn_download_task(
         completion_handle: chrx,
     };
 
-    let task_provider = TaskProvider::new_provider(&props, content_length)?;
+    let task_provider = if concurrency_enabled {
+        TaskProvider::new_provider(&props, content_length)?
+    } else {
+        debug!("No range support; falling back to a single sequential stream");
+        // A single stream is driven by exactly one worker.
+        props.task_count = 1;
+        return Err(DlMgrSetupError::NotImplemented("non-concurrent download"));
+    };
 
     let task_props = TaskProps {
         content_length,
@@ -73,7 +114,8 @@ pub async fn spawn_download_task(
     };
 
     tokio::spawn(async move {
-        let dl_result = exec_download(task_provider, url_set, task_props, chunk_consumer).await;
+        let dl_result =
+            exec_download(task_provider, final_url_set, task_props, chunk_consumer).await;
         chtx.send(dl_result).ok();
     });
 

@@ -11,6 +11,14 @@ pub(crate) struct DownloadProps {
     pub(crate) chunk_size: u32,
     pub(crate) max_buffer_size: Option<usize>,
     pub(crate) client_provider: Arc<Box<dyn ReqwestClientProvider>>,
+    pub(crate) concurrency_behaviour: ConcurrencyBehaviour,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ConcurrencyBehaviour {
+    Prefer,
+    Require,
+    Disabled,
 }
 
 #[derive(Clone)]
@@ -26,6 +34,7 @@ impl DownloadTaskBuilder {
                 chunk_size: 4 * 1024 * 1024,
                 max_buffer_size: None,
                 client_provider: Arc::new(Box::new(DefaultReqwestClientProvider)),
+                concurrency_behaviour: ConcurrencyBehaviour::Prefer,
             },
         }
     }
@@ -66,6 +75,14 @@ impl DownloadTaskBuilder {
     ) -> Result<Self, TaskBuilderError> {
         self.props.client_provider = Arc::new(provider);
         Ok(self)
+    }
+
+    pub fn with_concurrency_behaviour(
+        mut self,
+        concurrency_behaviour: ConcurrencyBehaviour,
+    ) -> Self {
+        self.props.concurrency_behaviour = concurrency_behaviour;
+        self
     }
 
     pub async fn begin_download(

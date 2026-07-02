@@ -1,17 +1,10 @@
 use crate::error::DlMgrSetupError;
 use reqwest::header::{ACCEPT_RANGES, CONTENT_LENGTH, HeaderValue};
 
-pub(crate) fn assert_supports_range_requests(
-    resp: &reqwest::Response,
-) -> Result<(), DlMgrSetupError> {
-    let header_val = resp
-        .headers()
-        .get(ACCEPT_RANGES)
-        .ok_or(DlMgrSetupError::RangeRequestsUnsupported)?;
-    if header_val == HeaderValue::from_static("none") {
-        Err(DlMgrSetupError::RangeRequestsUnsupported)
-    } else {
-        Ok(())
+pub(crate) fn detect_range_support(resp: &reqwest::Response) -> bool {
+    match resp.headers().get(ACCEPT_RANGES) {
+        Some(val) if val != HeaderValue::from_static("none") => true,
+        _ => false,
     }
 }
 
