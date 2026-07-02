@@ -68,8 +68,8 @@ pub enum RequestChunkError {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
 
-    #[error("SubmitChunkError")]
-    SubmitChunkError,
+    #[error("SubmitChunkError: {0}")]
+    SubmitChunkError(#[source] anyhow::Error),
 
     #[error("SplitPermitError: {0}")]
     SplitPermitError(String),

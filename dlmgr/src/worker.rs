@@ -2,6 +2,7 @@ use crate::urlset::UrlSet;
 
 use crate::error::{DownloadWorkerError, RequestChunkError};
 use crate::task_provider::TaskProvider;
+use anyhow::anyhow;
 use reqwest::header::RANGE;
 use std::time::Duration;
 use tokio::sync::OwnedSemaphorePermit;
@@ -130,15 +131,22 @@ async fn request_chunk(
                     let permits = split_permits(permit_container, chunk_len)?;
                     ctx.tx
                         .send((request_offset + bytes_sent, chunk.into(), permits))
-                        .map_err(|_| RequestChunkError::SubmitChunkError)?;
+                        .map_err(|_| {
+                            RequestChunkError::SubmitChunkError(anyhow!(
+                                "failed to submit chunk into channel"
+                            ))
+                        })?;
                 }
 
                 bytes_sent += chunk_len;
             }
             Ok(None) => {
                 //todo:does this make sense?
+                // This means we received fewer bytes than should have even though the response ended cleanly.
                 if permit_container.is_some() {
-                    return Err(RequestChunkError::SubmitChunkError);
+                    return Err(RequestChunkError::SubmitChunkError(anyhow!(
+                        "response completed successfully but permits left over."
+                    )));
                 }
                 return Ok(bytes_sent);
             }
