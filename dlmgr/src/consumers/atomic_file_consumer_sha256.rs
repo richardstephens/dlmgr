@@ -12,22 +12,35 @@ pub struct AtomicFileConsumerSha256 {
     file: Arc<Mutex<Option<AtomicWriteFile>>>,
     hasher: Sha256,
     expected_hash: Option<[u8; 32]>,
-    tx: Option<oneshot::Sender<anyhow::Result<()>>>,
+    tx: Option<oneshot::Sender<anyhow::Result<CompletionMessage>>>,
+    target_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompletionMessage {
+    pub path: PathBuf,
+    pub sha256: [u8; 32],
+}
+impl CompletionMessage {
+    pub fn sha256_hex(&self) -> String {
+        hex::encode(&self.sha256)
+    }
 }
 
 impl AtomicFileConsumerSha256 {
     pub async fn new(
-        target_file: PathBuf,
+        target_path: PathBuf,
         expected_hash: [u8; 32],
     ) -> Result<
         (
             AtomicFileConsumerSha256,
-            oneshot::Receiver<anyhow::Result<()>>,
+            oneshot::Receiver<anyhow::Result<CompletionMessage>>,
         ),
         Error,
     > {
+        let my_target_path = target_path.clone();
         let file =
-            tokio::task::spawn_blocking(move || AtomicWriteFile::open(target_file)).await??;
+            tokio::task::spawn_blocking(move || AtomicWriteFile::open(my_target_path)).await??;
         let hasher = Sha256::new();
 
         let (tx, rx) = oneshot::channel();
@@ -38,22 +51,24 @@ impl AtomicFileConsumerSha256 {
                 hasher,
                 expected_hash: Some(expected_hash),
                 tx: Some(tx),
+                target_path,
             },
             rx,
         ))
     }
 
     pub async fn new_unknown_hash(
-        target_file: PathBuf,
+        target_path: PathBuf,
     ) -> Result<
         (
             AtomicFileConsumerSha256,
-            oneshot::Receiver<anyhow::Result<()>>,
+            oneshot::Receiver<anyhow::Result<CompletionMessage>>,
         ),
         Error,
     > {
+        let my_target_path = target_path.clone();
         let file =
-            tokio::task::spawn_blocking(move || AtomicWriteFile::open(target_file)).await??;
+            tokio::task::spawn_blocking(move || AtomicWriteFile::open(my_target_path)).await??;
         let hasher = Sha256::new();
 
         let (tx, rx) = oneshot::channel();
@@ -64,6 +79,7 @@ impl AtomicFileConsumerSha256 {
                 hasher,
                 expected_hash: None,
                 tx: Some(tx),
+                target_path,
             },
             rx,
         ))
@@ -100,8 +116,12 @@ impl SequentialChunkConsumer for AtomicFileConsumerSha256 {
             return;
         }
         let outcome = commit_file(&self.file).await;
+        let completion_message = CompletionMessage {
+            path: self.target_path,
+            sha256: hash,
+        };
         if let Some(tx) = self.tx.take() {
-            tx.send(outcome).ok();
+            tx.send(outcome.map(|()| completion_message)).ok();
         } else {
             warn!(
                 "atomic_file_consumer finalise but completion channel missing. outcome={outcome:?}"
