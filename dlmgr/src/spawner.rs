@@ -2,6 +2,7 @@ use crate::api::sequential_chunk_consumer::SequentialChunkConsumer;
 use crate::chunk_order::reorder_chunks;
 use crate::error::{DlMgrCompletionError, DlMgrSetupError};
 use crate::response_helpers::{detect_range_support, extract_content_length};
+use crate::sequential::spawn_sequential_download;
 use crate::task::{DownloadTask, TaskStats};
 use crate::task_builder::{ConcurrencyBehaviour, DownloadProps};
 use crate::task_provider::TaskProvider;
@@ -24,7 +25,7 @@ struct TaskProps {
 pub async fn spawn_download_task(
     url_set: UrlSet,
     chunk_consumer: Box<dyn SequentialChunkConsumer>,
-    mut props: DownloadProps,
+    props: DownloadProps,
 ) -> Result<DownloadTask, DlMgrSetupError> {
     let client = props
         .client_provider
@@ -87,6 +88,7 @@ pub async fn spawn_download_task(
             false
         }
     };
+    debug!("concurrency_enabled={concurrency_enabled}");
 
     let (chtx, chrx) = oneshot::channel();
 
@@ -97,14 +99,13 @@ pub async fn spawn_download_task(
         completion_handle: chrx,
     };
 
-    let task_provider = if concurrency_enabled {
-        TaskProvider::new_provider(&props, content_length)?
-    } else {
-        debug!("No range support; falling back to a single sequential stream");
-        // A single stream is driven by exactly one worker.
-        props.task_count = 1;
-        return Err(DlMgrSetupError::NotImplemented("non-concurrent download"));
-    };
+    if !concurrency_enabled {
+        let url = final_url_set.url(0, 0);
+        spawn_sequential_download(url, client, chunk_consumer, task_stats, chtx);
+        return Ok(download_task);
+    }
+
+    let task_provider = TaskProvider::new_provider(&props, content_length)?;
 
     let task_props = TaskProps {
         content_length,
