@@ -15,6 +15,12 @@ pub struct HashingChunkConsumer {
     completion: Option<oneshot::Sender<Result<Vec<u8>, ()>>>,
 }
 
+impl Default for HashingChunkConsumer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HashingChunkConsumer {
     pub fn new() -> Self {
         let hasher = Box::new(Sha256::new());

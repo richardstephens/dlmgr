@@ -87,9 +87,9 @@ pub async fn reorder_chunks(
         // it may be needed to handle cases where we received some amount
         // of duplicate data. but maybe also better to detect duplicate
         // data and not store? need to think about this more.
-        return Err(DownloadWorkerError::ReorderChunks(
+        Err(DownloadWorkerError::ReorderChunks(
             ReorderChunkError::LeftoverChunks(pending_chunks.len()),
-        ));
+        ))
     } else {
         // this should be unreachable.
         Err(DownloadWorkerError::ReorderChunks(

@@ -26,6 +26,12 @@ pub struct DownloadTaskBuilder {
     props: DownloadProps,
 }
 
+impl Default for DownloadTaskBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DownloadTaskBuilder {
     pub fn new() -> Self {
         Self {
