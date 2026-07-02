@@ -24,4 +24,5 @@ url = "2.5.7"
 anyhow = "1.0.100"
 async-trait = "0.1.89"
 range-server = { path = "../range-server" }
-
+tempfile = "3.27.0"
+uuid = { version = "1.23.4", features = ["v4", "fast-rng"] }

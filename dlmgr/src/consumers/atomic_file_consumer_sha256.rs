@@ -16,7 +16,7 @@ pub struct AtomicFileConsumerSha256 {
     target_path: PathBuf,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CompletionMessage {
     pub path: PathBuf,
     pub sha256: [u8; 32],
