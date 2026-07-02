@@ -110,8 +110,12 @@ impl SequentialChunkConsumer for AtomicFileConsumerSha256 {
             && hash != expected_hash
         {
             if let Some(tx) = self.tx.take() {
-                tx.send(Err(anyhow!("Hash mismatch: actual={}", hex::encode(hash))))
-                    .ok();
+                tx.send(Err(anyhow!(
+                    "hash mismatch: actual={} (expected={})",
+                    hex::encode(hash),
+                    hex::encode(expected_hash)
+                )))
+                .ok();
             }
             return;
         }
