@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::oneshot;
 
+#[derive(Debug)]
 pub struct DownloadTask {
     pub(crate) content_length: u64,
     pub(crate) task_stats: Arc<TaskStats>,

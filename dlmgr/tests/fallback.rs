@@ -47,3 +47,16 @@ async fn sequential_fallback_when_concurrency_disabled() {
 
     assert_eq!(server.tmpfile_sha256, downloaded_hash);
 }
+
+#[tokio::test]
+async fn concurrency_require() {
+    let server = range_server::no_range::start_no_range_server(100 * 1024 * 1024).await;
+
+    let (download_target, _result_rx) = HashingChunkConsumer::new_with_hash_provider();
+
+    DownloadTaskBuilder::new()
+        .with_concurrency_behaviour(ConcurrencyBehaviour::Require)
+        .begin_download(server.url.clone().try_into().unwrap(), download_target)
+        .await
+        .unwrap_err();
+}
