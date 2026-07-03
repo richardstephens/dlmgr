@@ -11,7 +11,7 @@ pub enum TaskBuilderError {
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum DlMgrSetupError {
-    #[error("HEAD request to url={0} failed: {1}")]
+    #[error("HEAD request to url={0} failed: {1:?}")]
     HeadRequestFailed(Url, reqwest::Error),
 
     #[error("Server does not support range requests")]
@@ -26,7 +26,7 @@ pub enum DlMgrSetupError {
     #[error("InvalidMaxBufferSize")]
     InvalidMaxBufferSize,
 
-    #[error("ReqwestClientBuildError: {0}")]
+    #[error("ReqwestClientBuildError: {0:?}")]
     ReqwestClientBuildError(reqwest::Error),
 
     #[error("Not implemented: {0}")]
@@ -39,26 +39,26 @@ pub enum DlMgrCompletionError {
     #[error("Completion handle unexpectedly dropped. This is probably a bug.")]
     CompletionHandleDropped,
 
-    #[error("ReqwestClientBuildError: {0}")]
+    #[error("ReqwestClientBuildError: {0:?}")]
     ReqwestClientBuildError(reqwest::Error),
 
-    #[error("Download task failed: {0}")]
+    #[error("Download task failed: {0:?}")]
     TaskFailed(#[source] DownloadWorkerError),
 
-    #[error("Download task panicked: {0}")]
+    #[error("Download task panicked: {0:?}")]
     TaskPanicked(#[source] tokio::task::JoinError),
 }
 
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum DownloadWorkerError {
-    #[error("Worker {0} too many consecutive non-fatal failures, giving up. Last error: {1}")]
+    #[error("Worker {0} too many consecutive non-fatal failures, giving up. Last error: {1:?}")]
     TooManyConsecutiveFailures(u8, reqwest::Error),
 
-    #[error("Worker {0} encountered fatal error: {1}")]
+    #[error("Worker {0} encountered fatal error: {1:?}")]
     Fatal(u8, #[source] RequestChunkError),
 
-    #[error("Re-order chunks error: {0}")]
+    #[error("Re-order chunks error: {0:?}")]
     ReorderChunks(#[source] ReorderChunkError),
 }
 
@@ -68,7 +68,7 @@ pub enum RequestChunkError {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
 
-    #[error("SubmitChunkError: {0}")]
+    #[error("SubmitChunkError: {0:?}")]
     SubmitChunkError(#[source] anyhow::Error),
 
     #[error("SplitPermitError: {0}")]
@@ -90,7 +90,7 @@ pub enum RequestChunkError {
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum ReorderChunkError {
-    #[error("Chunk consumer failed to consume bytes: {0}")]
+    #[error("Chunk consumer failed to consume bytes: {0:?}")]
     ChunkConsumer(#[source] anyhow::Error),
 
     #[error("next_offset={0} ahead of furthest_offset={1}")]
