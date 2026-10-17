@@ -91,6 +91,7 @@ async fn retry_request_chunk(
                 } else {
                     warn!("Worker {} Error downloading chunk: {:?}", ctx.worker_num, e);
                 }
+                tokio::time::sleep(backoff).await;
                 if backoff.as_secs() < 60 {
                     backoff *= 2;
                 }
