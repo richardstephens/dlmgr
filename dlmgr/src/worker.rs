@@ -3,7 +3,8 @@ use crate::urlset::UrlSet;
 use crate::error::{DownloadWorkerError, RequestChunkError};
 use crate::task_provider::TaskProvider;
 use anyhow::anyhow;
-use reqwest::header::RANGE;
+use reqwest::StatusCode;
+use reqwest::header::{CONTENT_RANGE, RANGE};
 use std::time::Duration;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::mpsc::UnboundedSender;
@@ -82,7 +83,11 @@ async fn retry_request_chunk(
                     len -= received_len;
                 }
             }
-            Err(RequestChunkError::Reqwest(e)) => {
+            Err(
+                e @ (RequestChunkError::Reqwest(_)
+                | RequestChunkError::UnexpectedStatus(_)
+                | RequestChunkError::UnexpectedContentRange(_)),
+            ) => {
                 if last_success.elapsed() > Duration::from_secs(60 * 30) {
                     return Err(DownloadWorkerError::TooManyConsecutiveFailures(
                         ctx.worker_num,
@@ -119,6 +124,21 @@ async fn request_chunk(
         .header(RANGE, &range_header_val)
         .send()
         .await?;
+
+    if resp.status() != StatusCode::PARTIAL_CONTENT {
+        return Err(RequestChunkError::UnexpectedStatus(resp.status()));
+    }
+
+    let content_range = resp
+        .headers()
+        .get(CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    if !content_range.starts_with(&format!("bytes {request_offset}-")) {
+        return Err(RequestChunkError::UnexpectedContentRange(
+            content_range.to_string(),
+        ));
+    }
 
     let mut bytes_sent: u64 = 0;
     loop {

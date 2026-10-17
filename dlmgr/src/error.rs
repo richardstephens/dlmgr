@@ -53,7 +53,7 @@ pub enum DlMgrCompletionError {
 #[non_exhaustive]
 pub enum DownloadWorkerError {
     #[error("Worker {0} too many consecutive non-fatal failures, giving up. Last error: {1:?}")]
-    TooManyConsecutiveFailures(u8, reqwest::Error),
+    TooManyConsecutiveFailures(u8, #[source] RequestChunkError),
 
     #[error("Worker {0} encountered fatal error: {1:?}")]
     Fatal(u8, #[source] RequestChunkError),
@@ -67,6 +67,12 @@ pub enum DownloadWorkerError {
 pub enum RequestChunkError {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
+
+    #[error("Expected 206 Partial Content, got {0}")]
+    UnexpectedStatus(reqwest::StatusCode),
+
+    #[error("Content-Range '{0}' does not start at the requested offset")]
+    UnexpectedContentRange(String),
 
     #[error("SubmitChunkError: {0:?}")]
     SubmitChunkError(#[source] anyhow::Error),
